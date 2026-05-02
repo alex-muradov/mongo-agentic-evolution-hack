@@ -1,0 +1,53 @@
+flowchart LR
+  subgraph INGEST [Ingestion lane]
+    VOICE[Worker voice debrief<br/>OpenAI Whisper] --> EXTRACT[debrief_extractor<br/>what / where / for whom]
+    HIST[Historical Firebase jobs<br/>one-shot hydrate] --> CSB
+    EXTRACT --> CSB[case_study_builder<br/>PII strip + summarize + embed]
+    CONSENT[Customer consent + feedback] -. optional enrichment .-> CSB
+    CSB ==>|insert| CASE[(case_studies<br/>+ vector)]
+  end
+
+  CASE -. Atlas Change Stream .-> TRIG{New evidence<br/>or manual trigger?}
+  TRIG -->|fire| PROP
+
+  subgraph REASON [Reasoning lane]
+    PROP[proposer<br/>RAG: case_studies + learnings + open_questions] --> HYP[(hypotheses)]
+    PROP --> OQ[(open_questions)]
+    HYP --> GATE_A{HITL A<br/>approve hypothesis?}
+    GATE_A -->|reject / edit| PROP
+    GATE_A -->|approve| DISP[dispatcher]
+  end
+
+  subgraph DISPATCH [Dispatch lane]
+    DISP -->|insert| EXP[(experiments)]
+    DISP -->|create / update flag| PH_FLAG[PostHog feature flag]
+    DISP -->|set slot variant| WEB[Existing pSEO template<br/>RS Lock page]
+  end
+
+  subgraph MEASURE [Measurement lane]
+    WEB -->|user sessions| PH_REC[PostHog session recordings + events]
+    PH_REC --> EV[(evidence_sessions)]
+    EV --> RS[replay_summarizer<br/>per-session, streaming]
+    RS -->|enrich| EV
+    EV --> ANA[analyst<br/>convergence + stop rule]
+    ANA -->|stop signal| GATE_B{HITL B<br/>confirm early-stop?}
+    GATE_B -->|continue| ANA
+    GATE_B -->|stop| VERD[verdict draft<br/>confirmed-high / directional / refuted / inconclusive]
+    VERD --> GATE_C{HITL C<br/>approve verdict?}
+    GATE_C -->|edit| VERD
+    GATE_C -->|approve| VOUT[(verdicts)]
+  end
+
+  subgraph REFLECT [Reflect lane]
+    VOUT --> REF[reflect node]
+    REF -->|insert + embed| LRN[(learnings)]
+    REF -->|update / close| OQ
+    REF -. feeds next iteration .-> PROP
+  end
+
+  classDef coll fill:#e6f3ff,stroke:#3b82f6,color:#000
+  classDef ext  fill:#fef3c7,stroke:#d97706,color:#000
+  classDef gate fill:#fee2e2,stroke:#dc2626,color:#000
+  class CASE,HYP,OQ,EXP,EV,VOUT,LRN coll
+  class VOICE,HIST,CONSENT,PH_FLAG,PH_REC,WEB ext
+  class GATE_A,GATE_B,GATE_C gate

@@ -1,0 +1,7 @@
+tunnel: 3083d8fb-d378-4bc1-bbc1-e5620aef8e3a
+credentials-file: /Users/alexm/.cloudflared/3083d8fb-d378-4bc1-bbc1-e5620aef8e3a.json
+
+ingress:
+  - hostname: autoresearch.alexmdev.xyz
+    service: http://localhost:8000
+  - service: http_status:404
